@@ -35,6 +35,29 @@ typedef vec<MGLfloat,4> vec4;   //data structure storing a 4 dimensional vector,
 typedef vec<MGLfloat,3> vec3;   //data structure storing a 3 dimensional vector, see vec.h
 typedef vec<MGLfloat,2> vec2;   //data structure storing a 2 dimensional vector, see vec.h
 
+
+
+/**
+ * Global Variables
+ */
+vec3 color;
+MGLpoly_mode currentPrim;
+/**
+ * Structs n stuff
+ */
+struct vertex {
+	vec4 pos;
+	vec3 vertColor;
+};
+
+struct triangle {
+	vertex a, b, c;
+};
+
+vector<vertex> vertices;
+vector<triangle> triangles;
+
+
 /**
  * Standard macro to report errors
  */
@@ -43,7 +66,56 @@ inline void MGL_ERROR(const char* description) {
     exit(1);
 }
 
+float triArea(vec2 a, vec2 b, vec2 c) {
+	return abs( (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2.0);
+}
 
+void Rasterize_Triangle(const Triangle& tri, int width, int height, MGLpixel* data) {
+	float fi = ((tri.a.pos[0]/tri.a.pos[3]) + 1) * width;
+	fi /= 2.0;
+	fi -= 0.5;
+	
+	float fj = ((tri.a.pos[1]/tri.a.pos[3]) + 1) * height;
+	fj /= 2.0;
+	fj -= 0.5;
+
+	vec2 pointa = vec2(fi,fj);
+
+	fi = ((tri.b.pos[0]/tri.b.pos[3]) + 1) * width;
+	fi /= 2.0;
+	fi -= 0.5;
+	
+	fj = ((tri.b.pos[1]/tri.b.pos[3]) + 1) * height;
+	fj /= 2.0;
+	fj -= 0.5;
+
+	vec2 pointb = vec2(fi,fj);
+	
+	fi = ((tri.c.pos[0]/tri.c.pos[3]) + 1) * width;
+	fi /= 2.0;
+	fi -= 0.5;
+	
+	fj = ((tri.c.pos[1]/tri.c.pos[3]) + 1) * height;
+	fj /= 2.0;
+	fj -= 0.5;
+
+	vec2 pointc = vec2(fi,fj);
+	for(int i = 0; i < width; i++) {
+		for (int j = 0; j < height; j++) {
+			vec2 I = vec2(i,j);
+			float alpha = triArea(I, pointb, pointc);	
+			float beta = triArea(pointa, I, pointc);
+			float gamma = triArea(pointa, pointb, I);
+			if(alpha >= 0.0 && beta >= 0.0 && gamma >= 0.0) {
+				//Color pixel: don't really know what im doing but yolo
+				data[i+j*width] = Make_Pixel(//something, ill finish later)
+			}
+		}
+	}
+				
+
+		
+}
 /**
  * Read pixel data starting with the pixel at coordinates
  * (0, 0), up to (width,  height), into the array
@@ -60,6 +132,8 @@ void mglReadPixels(MGLsize width,
                    MGLsize height,
                    MGLpixel *data)
 {
+	
+
 }
 
 /**
@@ -68,6 +142,7 @@ void mglReadPixels(MGLsize width,
  */
 void mglBegin(MGLpoly_mode mode)
 {
+	currentPrim = mode;
 }
 
 
@@ -76,6 +151,39 @@ void mglBegin(MGLpoly_mode mode)
  */
 void mglEnd()
 {
+	if(currentPrim == MGL_TRIANGLES) {
+		int temp = vertices.size(); //If there aren't an even 3 vertices, don't count the last 2
+		temp -= temp % 3;
+
+		for(int i = 0; i < temp; i += 3) { //Loop through the vertices, every 3 creates a triangle.
+			triangle t;
+			t.a = vertices.at(i);
+			t.b = vertices.at(i+1);
+			t.c = vertices.at(i+2);
+			triangles.push_back(t);
+		}
+	}
+
+	if(currentPrim == MGL_QUADS) {
+		int temp = vertices.size();
+		temp -= temp % 4;
+		for(int i = 0; i < temp; i +=4) {
+			triangle t1;
+			triangle t2;
+			t1.a = vertices.at(i);
+			t1.b = vertices.at(i+1);
+			t1.c = vertices.at(i+2);
+			
+			t2.a = vertices.at(i);
+			t2.b = vertices.at(i+2);
+			t2.c = vertices.at(i+3);
+			
+			triangles.push_back(t1);
+			triangles.push_back(t2);
+		}
+	}
+	
+	vertices.clear();
 }
 
 /**
@@ -97,6 +205,11 @@ void mglVertex3(MGLfloat x,
                 MGLfloat y,
                 MGLfloat z)
 {
+	vertex v;
+	v.pos = vec4(x,y,z,1);
+	v.vertColor = color;
+	//TODO: multiply the vertex with the modelview and proj matrices before adding to the list
+	vertices.push_back(v);
 }
 
 /**
@@ -226,4 +339,5 @@ void mglColor(MGLfloat red,
               MGLfloat green,
               MGLfloat blue)
 {
+	color = vec3(red, green, blue);
 }
