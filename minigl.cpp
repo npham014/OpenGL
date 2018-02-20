@@ -79,7 +79,8 @@ mat4& getCurrentMatrix() {
 }
 
 float triArea(vec2 a, vec2 b, vec2 c) { //Returns the area of the triangle made by vertexes a b and c.
-	return abs( (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2.0);
+	//return abs( (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2.0);
+	return abs(a[0]*(b[1]-c[1]) + a[1]*(c[0]-b[0]) + (b[0]*c[1] - b[1]*c[0]));
 }
 
 void Rasterize_Triangle(const triangle& tri, int width, int height, MGLpixel* data) {
