@@ -42,6 +42,9 @@ typedef vec<MGLfloat,2> vec2;   //data structure storing a 2 dimensional vector,
  */
 vec3 color;
 MGLpoly_mode currentPrim;
+MGLmatrix_mode currentMatrixMode;
+mat4 modelViewMatrix;
+mat4 projMatrix;
 /**
  * Structs n stuff
  */
@@ -66,11 +69,20 @@ inline void MGL_ERROR(const char* description) {
     exit(1);
 }
 
-float triArea(vec2 a, vec2 b, vec2 c) {
+mat4& getCurrentMatrix() { 
+	if(currentMatrixMode == MGL_MODELVIEW) {
+		return modelViewMatrix;
+	}
+	else { //Not sure if we need to account for MGL_TEXTURE or MGL_COLOR yet
+		return projMatrix;
+	}
+}
+
+float triArea(vec2 a, vec2 b, vec2 c) { //Returns the area of the triangle made by vertexes a b and c.
 	return abs( (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2.0);
 }
 
-void Rasterize_Triangle(const Triangle& tri, int width, int height, MGLpixel* data) {
+void Rasterize_Triangle(const triangle& tri, int width, int height, MGLpixel* data) {
 	float fi = ((tri.a.pos[0]/tri.a.pos[3]) + 1) * width;
 	fi /= 2.0;
 	fi -= 0.5;
@@ -98,24 +110,26 @@ void Rasterize_Triangle(const Triangle& tri, int width, int height, MGLpixel* da
 	fj = ((tri.c.pos[1]/tri.c.pos[3]) + 1) * height;
 	fj /= 2.0;
 	fj -= 0.5;
+	
+	vec2 pointc = vec2(fi, fj);
 
-	vec2 pointc = vec2(fi,fj);
+	float totalArea = triArea(pointa, pointb, pointc);
+
 	for(int i = 0; i < width; i++) {
 		for (int j = 0; j < height; j++) {
 			vec2 I = vec2(i,j);
-			float alpha = triArea(I, pointb, pointc);	
-			float beta = triArea(pointa, I, pointc);
-			float gamma = triArea(pointa, pointb, I);
+			float alpha = triArea(I, pointb, pointc)/totalArea;	
+			float beta = triArea(pointa, I, pointc)/totalArea;
+			float gamma = triArea(pointa, pointb, I)/totalArea;
 			if(alpha >= 0.0 && beta >= 0.0 && gamma >= 0.0) {
 				//Color pixel: don't really know what im doing but yolo
-				data[i+j*width] = Make_Pixel(//something, ill finish later)
+				data[i+j*width] = Make_Pixel(tri.a.vertColor[0] * 255, tri.a.vertColor[0] * 255, tri.a.vertColor[0] * 255); //This will probably change later. Currently using color of 1st pixel 
 			}
 		}
 	}
-				
-
-		
+						
 }
+
 /**
  * Read pixel data starting with the pixel at coordinates
  * (0, 0), up to (width,  height), into the array
@@ -132,8 +146,18 @@ void mglReadPixels(MGLsize width,
                    MGLsize height,
                    MGLpixel *data)
 {
+	for(unsigned int i = 0; i < width; i++) {
+		for(unsigned int j = 0; j < height; j++) {
+			data[i+j*width] = Make_Pixel(color[0] * 255, color[1] * 255, color[2] * 255); //Set all pixels to global color
+		}
+	}
 	
-
+	for(unsigned int k = 0; k < triangles.size(); k++) {
+		Rasterize_Triangle(triangles.at(k), width, height, data);
+	}	
+	
+	triangles.clear();
+	
 }
 
 /**
@@ -195,6 +219,11 @@ void mglEnd()
 void mglVertex2(MGLfloat x,
                 MGLfloat y)
 {
+	vertex v;
+	v.pos = vec4(x,y,0,1);
+	v.vertColor = color;
+	v.pos = projMatrix * v.pos;
+	vertices.push_back(v);
 }
 
 /**
@@ -208,7 +237,8 @@ void mglVertex3(MGLfloat x,
 	vertex v;
 	v.pos = vec4(x,y,z,1);
 	v.vertColor = color;
-	//TODO: multiply the vertex with the modelview and proj matrices before adding to the list
+	//v.pos = modelViewMatrix * projMatrix * v.pos;
+	v.pos = projMatrix * v.pos; //Change to the above later	
 	vertices.push_back(v);
 }
 
@@ -217,6 +247,7 @@ void mglVertex3(MGLfloat x,
  */
 void mglMatrixMode(MGLmatrix_mode mode)
 {
+	currentMatrixMode = mode;
 }
 
 /**
@@ -272,6 +303,20 @@ void mglLoadMatrix(const MGLfloat *matrix)
  */
 void mglMultMatrix(const MGLfloat *matrix)
 {
+	//Note: Why do we pass in MGLfloat instead of just passing the matrix???????
+	
+	mat4 temp;
+	temp.make_zero();
+	for(int i = 0; i < temp.cols(); i++) {
+		for(int j = 0; j < temp.rows(); j++) {
+			temp(i,j) = matrix[j*temp.cols() + i];
+		}
+	}
+	 
+	mat4& current = getCurrentMatrix();
+	current = temp * current;
+
+	return;	
 }
 
 /**
@@ -330,6 +375,21 @@ void mglOrtho(MGLfloat left,
               MGLfloat near,
               MGLfloat far)
 {
+	float x = (left + right)/(right - left) * -1;
+	float y = (top + bottom)/(top - bottom) * -1;
+	float z = (far + near)/(far - near) * -1;
+	
+	float a = 2.0 / (right - left);
+	float b = 2.0 / (top - bottom);
+	float c = 2.0 / (far - near) * -1;
+	
+	
+	mat4 orthoMatrix = {a, 0.0, 0.0, 0.0,
+			    b, 0.0, 0.0, 0.0,
+			    c, 0.0, 0.0, 0.0,
+			    x, y, z, 1.0};
+
+	mglMultMatrix(orthoMatrix.values);	
 }
 
 /**
