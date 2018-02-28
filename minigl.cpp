@@ -23,7 +23,6 @@
 #include <cmath>
 #include <vector>
 #include <cstdio>
-
 using namespace std;
 
 /**
@@ -51,6 +50,15 @@ mat4 projMatrix = {1, 0, 0, 0,
 		   0, 1, 0, 0,
 		   0, 0, 1, 0,
                    0, 0, 0, 1};
+const mat4 identity = {1, 0, 0, 0,
+		 0, 1, 0, 0,
+		 0, 0, 1, 0,
+		 0, 0, 0, 1};
+
+vector<mat4> projStack;
+vector<mat4> modViewStack;
+
+
 /**
  * Structs n stuff
  */
@@ -85,37 +93,42 @@ mat4& getCurrentMatrix() {
 	}
 }
 
+void setCurrentMatrix(mat4 matrix) {
+	getCurrentMatrix() = matrix;
+	
+}
 float triArea(vec2 a, vec2 b, vec2 c) { //Returns the area of the triangle made by vertexes a b and c.
 	//return abs( (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2.0);
 	return a[0]*(b[1]-c[1]) + a[1]*(c[0]-b[0]) + (b[0]*c[1] - b[1]*c[0]);
 }
 
 void Rasterize_Triangle(const triangle& tri, int width, int height, MGLpixel* data) {
-	float fi = (tri.a.pos[0] + 1) * width;
+	
+	float fi = (tri.a.pos[0]/tri.a.pos[3] + 1) * width;
 	fi /= 2.0;
 	fi -= 0.5;
 	
-	float fj = (tri.a.pos[1] + 1) * height;
+	float fj = (tri.a.pos[1]/tri.a.pos[3] + 1) * height;
 	fj /= 2.0;
 	fj -= 0.5;
 
 	vec2 pointa = vec2(fi,fj);
 
-	fi = (tri.b.pos[0] + 1) * width;
+	fi = (tri.b.pos[0]/tri.b.pos[3] + 1) * width;
 	fi /= 2.0;
 	fi -= 0.5;
 	
-	fj = (tri.b.pos[1] + 1) * height;
+	fj = (tri.b.pos[1]/tri.b.pos[3] + 1) * height;
 	fj /= 2.0;
 	fj -= 0.5;
 
 	vec2 pointb = vec2(fi,fj);
 	
-	fi = (tri.c.pos[0] + 1) * width;
+	fi = (tri.c.pos[0]/tri.c.pos[3] + 1) * width;
 	fi /= 2.0;
 	fi -= 0.5;
 	
-	fj = (tri.c.pos[1] + 1) * height;
+	fj = (tri.c.pos[1]/tri.c.pos[3] + 1) * height;
 	fj /= 2.0;
 	fj -= 0.5;
 	
@@ -239,7 +252,7 @@ void mglVertex2(MGLfloat x,
 	vertex v;
 	v.pos = vec4(x,y,0,1);
 	v.vertColor = color;
-	v.pos = projMatrix * v.pos;
+	v.pos = projMatrix * modelViewMatrix * v.pos;
 	vertices.push_back(v);
 }
 
@@ -255,8 +268,8 @@ void mglVertex3(MGLfloat x,
 	v.pos = vec4(x,y,z,1.0);
 	
 	v.vertColor = color;
-	//v.pos = modelViewMatrix * projMatrix * v.pos;
-	v.pos = projMatrix * v.pos; //Change to the above later	
+	v.pos = projMatrix * modelViewMatrix * v.pos;
+	//v.pos = projStack.back() * modViewStack.back() * v.pos;
 	vertices.push_back(v);
 }
 
@@ -274,6 +287,19 @@ void mglMatrixMode(MGLmatrix_mode mode)
  */
 void mglPushMatrix()
 {
+	/*if(projStack.size() == 0) {
+		projStack.push_back(identity);
+	}
+	if(modViewStack.size() == 0) {
+		modViewStack.push_back(identity);
+	}*/		
+	
+	if(currentMatrixMode == MGL_PROJECTION) {
+		projStack.push_back(getCurrentMatrix());
+	}
+	else { //Again assuming that MGLTEXTURE and MGLCOLOR aren't needed yet
+		modViewStack.push_back(getCurrentMatrix());
+	}
 }
 
 /**
@@ -282,6 +308,21 @@ void mglPushMatrix()
  */
 void mglPopMatrix()
 {
+	
+	if(currentMatrixMode == MGL_PROJECTION) {
+		if(projStack.size() == 0) {
+			return;
+		}
+		setCurrentMatrix(projStack.back());
+		projStack.pop_back();
+	}	
+	else {
+		if(modViewStack.size() == 0) {
+			return;
+		}
+		setCurrentMatrix(modViewStack.back());
+		modViewStack.pop_back();
+	}
 }
 
 /**
@@ -289,6 +330,7 @@ void mglPopMatrix()
  */
 void mglLoadIdentity()
 {
+	setCurrentMatrix(identity);
 }
 
 /**
@@ -321,18 +363,18 @@ void mglLoadMatrix(const MGLfloat *matrix)
  */
 void mglMultMatrix(const MGLfloat *matrix)
 {
-	//Note: Why do we pass in MGLfloat instead of just passing the matrix???????
-	
 	mat4 temp;
 	temp.make_zero();
 	for(int i = 0; i < temp.cols(); i++) {
 		for(int j = 0; j < temp.rows(); j++) {
-			temp(i,j) = matrix[j*temp.cols() + i];
+			temp(i,j) = *(matrix + (i + j * temp.cols()));
 		}
 	}
 	 
-	mat4& current = getCurrentMatrix();
-	current = temp * current;
+	/*mat4& current = getCurrentMatrix();
+	current =  current * temp;*/
+	
+	getCurrentMatrix() = getCurrentMatrix() * temp;
 
 	return;	
 }
@@ -345,6 +387,12 @@ void mglTranslate(MGLfloat x,
                   MGLfloat y,
                   MGLfloat z)
 {
+	mat4 transMatrix = {1.0, 0.0, 0.0, 0.0,
+			    0.0, 1.0, 0.0, 0.0,
+			    0.0, 0.0, 1.0, 0.0,
+			    x, y, z, 1.0};
+
+	mglMultMatrix(transMatrix.values);
 }
 
 /**
@@ -357,6 +405,29 @@ void mglRotate(MGLfloat angle,
                MGLfloat y,
                MGLfloat z)
 {
+	float c = cos(angle);
+	float s = cos(angle);
+	
+	vec3 point = vec3(x,y,z);
+	point = point.normalized();
+	
+	
+	float a1 = (point[0] * point[0]) * (1 - c) + c;
+	float a2 = (point[0] * point[1]) * (1 - c) + (point[2] * s);
+	float a3 = (point[0] * point[2]) * (1 - c) - (point[1] * s);
+	float b1 = (point[0] * point[1]) * (1 - c) - (point[2] * s);
+	float b2 = (point[1] * point[1]) * (1 - c) + c;
+	float b3 = (point[1] * point[2]) * (1 - c) + (point[0] * s);
+	float c1 = (point[0] * point[2]) * (1 - c) + (point[1] * s);
+	float c2 = (point[1] * point[2]) * (1 - c) - (point[0] * s);
+	float c3 = (point[2] * point[2]) * (1 - c) + c;
+	
+	mat4 rotMatrix = {a1, a2, a3, 0.0,
+			  b1, b2, b3, 0.0,
+			  c1, c2, c3, 0.0,
+			  0.0, 0.0, 0.0, 1.0};
+
+	mglMultMatrix(rotMatrix.values);	
 }
 
 /**
@@ -367,6 +438,12 @@ void mglScale(MGLfloat x,
               MGLfloat y,
               MGLfloat z)
 {
+	mat4 scaleMatrix = {x, 0.0, 0.0, 0.0,
+			    0.0, y, 0.0, 0.0,
+			    0.0, 0.0, z, 0.0,
+			    0.0, 0.0, 0.0, 1.0};
+
+	mglMultMatrix(scaleMatrix.values);	
 }
 
 /**
@@ -380,6 +457,21 @@ void mglFrustum(MGLfloat left,
                 MGLfloat near,
                 MGLfloat far)
 {
+	float x = (near * 2.0)/(right - left);
+	float y = (near * 2.0)/(top - bottom);
+	
+	float a = (right + left)/(right - left);
+	float b = (top + bottom)/(top - bottom);
+	float c = (far + near)/(far - near) * -1.0;
+	float d = (2 * far * near)/(far - near) * -1.0;
+	
+	mat4 frustMatrix = {x, 0.0, 0.0, 0.0,
+			    0.0, y, 0.0, 0.0,
+			    a, b, c, -1.0,
+			    0.0, 0.0, d, 0.0};
+
+	
+	mglMultMatrix(frustMatrix.values);		    
 }
 
 /**
@@ -407,8 +499,8 @@ void mglOrtho(MGLfloat left,
 			    0.0, 0.0, c, 0.0,
 			    x, y, z, 1.0};
 
-	projMatrix = orthoMatrix;
-	//mglMultMatrix(orthoMatrix.values);	
+	
+	mglMultMatrix(orthoMatrix.values);	
 }
 
 /**
