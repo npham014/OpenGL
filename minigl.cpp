@@ -58,6 +58,7 @@ const mat4 identity = {1, 0, 0, 0,
 vector<mat4> projStack;
 vector<mat4> modViewStack;
 
+//mat4* currentTop = &projStack;
 
 /**
  * Structs n stuff
@@ -253,6 +254,7 @@ void mglVertex2(MGLfloat x,
 	v.pos = vec4(x,y,0,1);
 	v.vertColor = color;
 	v.pos = projMatrix * modelViewMatrix * v.pos;
+	//v.pos = projStack.back() * modViewStack.back() * v.pos;
 	vertices.push_back(v);
 }
 
@@ -311,6 +313,7 @@ void mglPopMatrix()
 	
 	if(currentMatrixMode == MGL_PROJECTION) {
 		if(projStack.size() == 0) {
+			cout << "Error: Popping Empty Stack" << endl;
 			return;
 		}
 		setCurrentMatrix(projStack.back());
@@ -318,6 +321,7 @@ void mglPopMatrix()
 	}	
 	else {
 		if(modViewStack.size() == 0) {
+			cout << "Error: Popping Empty Stack." << endl;
 			return;
 		}
 		setCurrentMatrix(modViewStack.back());
@@ -405,22 +409,27 @@ void mglRotate(MGLfloat angle,
                MGLfloat y,
                MGLfloat z)
 {
-	float c = cos(angle);
-	float s = cos(angle);
+	float c = cos(angle * M_PI / 180.0);
+	float s = sin(angle * M_PI / 180.0);
 	
+	//c *= -1;
+	//s *= -1;
 	vec3 point = vec3(x,y,z);
 	point = point.normalized();
 	
+	float x1 = point[0];
+	float y1 = point[1];
+	float z1 = point[2];	
 	
-	float a1 = (point[0] * point[0]) * (1 - c) + c;
-	float a2 = (point[0] * point[1]) * (1 - c) + (point[2] * s);
-	float a3 = (point[0] * point[2]) * (1 - c) - (point[1] * s);
-	float b1 = (point[0] * point[1]) * (1 - c) - (point[2] * s);
-	float b2 = (point[1] * point[1]) * (1 - c) + c;
-	float b3 = (point[1] * point[2]) * (1 - c) + (point[0] * s);
-	float c1 = (point[0] * point[2]) * (1 - c) + (point[1] * s);
-	float c2 = (point[1] * point[2]) * (1 - c) - (point[0] * s);
-	float c3 = (point[2] * point[2]) * (1 - c) + c;
+	float a1 = ((x1 * x1) * (1 - c)) + c;
+	float a2 = ((y1 * x1) * (1 - c)) + (z1 * s);
+	float a3 = ((x1 * z1) * (1 - c)) - (y1 * s);
+	float b1 = ((x1 * y1) * (1 - c)) - (z1 * s);
+	float b2 = ((y1 * y1) * (1 - c)) + c;
+	float b3 = ((y1 * z1) * (1 - c)) + (x1 * s);
+	float c1 = ((x1 * z1) * (1 - c)) + (y1 * s);
+	float c2 = ((y1 * z1) * (1 - c)) - (x1 * s);
+	float c3 = ((z1 * z1) * (1 - c)) + c;
 	
 	mat4 rotMatrix = {a1, a2, a3, 0.0,
 			  b1, b2, b3, 0.0,
