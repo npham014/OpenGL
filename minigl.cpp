@@ -57,6 +57,7 @@ const mat4 identity = {1, 0, 0, 0,
 
 vector<mat4> projStack;
 vector<mat4> modViewStack;
+vector<vector<float>> zBuffer;//zBuffer.at(1).at(2) denotes the pixel at x = 1, y = 2. ie zBuffer is width by height
 
 //mat4* currentTop = &projStack;
 
@@ -152,14 +153,21 @@ void Rasterize_Triangle(const triangle& tri, int width, int height, MGLpixel* da
 			cout << "beta: " << beta << endl;
 			cout << "gamma: " << gamma << endl;*/
 			if(alpha >= 0 && beta >= 0 && gamma >= 0) {
-				
-				//cout << "test" << endl;
-				data[i+j*width] = Make_Pixel(tri.a.vertColor[0] * 255, tri.a.vertColor[1] * 255, tri.a.vertColor[2] * 255); //This will probably change later. Currently using color of 1st pixel 
-			}
-		}
-	}
+				float zDepth = (alpha * tri.a.pos[2]/tri.a.pos[3]) + (beta * tri.b.pos[2]/tri.b.pos[3]) + (gamma * tri.c.pos[2]/tri.c.pos[3]);
+				if(zBuffer.at(i).at(j) > zDepth) {
+					float k = (alpha / tri.a.pos[3]) + (beta / tri.b.pos[3]) + (gamma / tri.c.pos[3]);
+					alpha = (alpha / tri.a.pos[3]) / k;
+					beta = (beta / tri.b.pos[3]) / k;
+					gamma = (gamma / tri.c.pos[3]) / k;
+					vec3 finalColor = (tri.a.vertColor * 255 * alpha+ tri.b.vertColor * 255 * beta+ tri.c.vertColor * 255 * gamma);
+					data[i+j*width] = Make_Pixel(finalColor[0], finalColor[1], finalColor[2]);
+					zBuffer.at(i).at(j) = zDepth;
+				}//Z buffer implementation if 
+			}//Barycentric coordinate if
+		}//inner loop
+	}//outer loop
 						
-}
+}//function
 
 /**
  * Read pixel data starting with the pixel at coordinates
@@ -177,6 +185,11 @@ void mglReadPixels(MGLsize width,
                    MGLsize height,
                    MGLpixel *data)
 {
+	zBuffer.resize(width);//Initialize Z buffer for an unkown width and height
+	for(unsigned l = 0; l < width; l++) {
+		zBuffer.at(l) = vector<float>(height, 2);
+		
+	}
 	for(unsigned int i = 0; i < width; i++) {
 		for(unsigned int j = 0; j < height; j++) {
 			data[i+j*width] = Make_Pixel(0, 0, 0); //Set all pixels to black
@@ -351,6 +364,15 @@ void mglLoadIdentity()
  */
 void mglLoadMatrix(const MGLfloat *matrix)
 {
+	mat4 temp;
+	temp.make_zero();
+	for(int i = 0; i < temp.cols(); i++) {
+		for(int j = 0; j < temp.rows(); j++) {
+			temp(i,j) = *(matrix + (i + j * temp.cols()));
+		}
+	}
+	
+	setCurrentMatrix(temp);
 }
 
 /**
